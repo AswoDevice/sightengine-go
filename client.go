@@ -16,26 +16,24 @@ type Client struct {
 	apiSecret string
 	endpoint string
 	http *http.Client
-	models string
 	url string
 }
 
-func New(user string, secret string, models ...Model) *Client {
+func New(user string, secret string) *Client {
 	return &Client{
 		apiUser: user,
 		apiSecret: secret,
 		endpoint: "https://api.sightengine.com/",
 		http: &http.Client{},
-		models: join(models, ","),
 		url: "1.0/check.json",
 	}
 }
 
-func (client *Client) CheckUrl(imageUrl string) (*Response, error) {
+func (client *Client) CheckUrl(imageUrl string, models ...Model) (*Response, error) {
 	var response *Response
 	req, err := http.NewRequest("GET", client.getUrl(), nil)
 	if err == nil {
-		query := client.newQuery(req)
+		query := client.newQuery(req, models)
 		query.Add("url", imageUrl)
 
 		req.URL.RawQuery = query.Encode()
@@ -46,7 +44,7 @@ func (client *Client) CheckUrl(imageUrl string) (*Response, error) {
 	return response, err
 }
 
-func (client *Client) CheckFile(imagePath string) (*Response, error) {
+func (client *Client) CheckFile(imagePath string, models ...Model) (*Response, error) {
 	file, err := os.Open(imagePath)
 
 	if err != nil {
@@ -54,14 +52,14 @@ func (client *Client) CheckFile(imagePath string) (*Response, error) {
 	}
 	defer file.Close()
 
-	return client.checkReader(file, filepath.Base(file.Name()))
+	return client.checkReader(file, filepath.Base(file.Name()), models)
 }
 
-func (client *Client) CheckBytes(imageSrc []byte, filename string) (*Response, error) {
-	return client.checkReader(bytes.NewReader(imageSrc), filename)
+func (client *Client) CheckBytes(imageSrc []byte, filename string, models ...Model) (*Response, error) {
+	return client.checkReader(bytes.NewReader(imageSrc), filename, models)
 }
 
-func (client *Client) checkReader(reader io.Reader, filename string) (*Response, error) {
+func (client *Client) checkReader(reader io.Reader, filename string, models []Model) (*Response, error) {
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 	part, err := writer.CreateFormFile("media", filename)
@@ -76,7 +74,7 @@ func (client *Client) checkReader(reader io.Reader, filename string) (*Response,
 	var response *Response
 	req, err := http.NewRequest("POST", client.getUrl(), body)
 	if err == nil {
-		query := client.newQuery(req)
+		query := client.newQuery(req, models)
 
 		req.URL.RawQuery = query.Encode()
 		req.Header.Add("Content-Type", writer.FormDataContentType())
@@ -101,11 +99,11 @@ func (client *Client) request(req *http.Request) (*Response, error) {
 	return &response, err
 }
 
-func (client *Client) newQuery(req *http.Request) url.Values {
+func (client *Client) newQuery(req *http.Request, models []Model) url.Values {
 	query := req.URL.Query()
 	query.Add("api_user", client.apiUser)
 	query.Add("api_secret", client.apiSecret)
-	query.Add("models", client.models)
+	query.Add("models", join(models, ","))
 	return query
 }
 
