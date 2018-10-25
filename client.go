@@ -1,7 +1,6 @@
 package sightengine_go
 
 import (
-	"strings"
 	"net/http"
 	"os"
 	"bytes"
@@ -12,7 +11,7 @@ import (
 	"encoding/json"
 )
 
-type Check struct {
+type Client struct {
 	apiUser string
 	apiSecret string
 	endpoint string
@@ -21,8 +20,8 @@ type Check struct {
 	url string
 }
 
-func newCheck(user string, secret string, models []Model) *Check {
-	return &Check{
+func New(user string, secret string, models ...Model) *Client {
+	return &Client{
 		apiUser: user,
 		apiSecret: secret,
 		endpoint: "https://api.sightengine.com/",
@@ -32,22 +31,22 @@ func newCheck(user string, secret string, models []Model) *Check {
 	}
 }
 
-func (check *Check) SetUrl(imageUrl string) (*Response, error) {
+func (client *Client) CheckUrl(imageUrl string) (*Response, error) {
 	var response *Response
-	req, err := http.NewRequest("GET", check.getUrl(), nil)
+	req, err := http.NewRequest("GET", client.getUrl(), nil)
 	if err == nil {
-		query := check.newQuery(req)
+		query := client.newQuery(req)
 		query.Add("url", imageUrl)
 
 		req.URL.RawQuery = query.Encode()
 
-		response, err = check.request(req)
+		response, err = client.request(req)
 	}
 
 	return response, err
 }
 
-func (check *Check) SetFile(imagePath string) (*Response, error) {
+func (client *Client) CheckFile(imagePath string) (*Response, error) {
 	file, err := os.Open(imagePath)
 
 	if err != nil {
@@ -55,35 +54,43 @@ func (check *Check) SetFile(imagePath string) (*Response, error) {
 	}
 	defer file.Close()
 
+	return client.checkReader(file, filepath.Base(file.Name()))
+}
+
+func (client *Client) CheckBytes(imageSrc []byte, filename string) (*Response, error) {
+	return client.checkReader(bytes.NewReader(imageSrc), filename)
+}
+
+func (client *Client) checkReader(reader io.Reader, filename string) (*Response, error) {
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
-	part, err := writer.CreateFormFile("media", filepath.Base(file.Name()))
+	part, err := writer.CreateFormFile("media", filename)
 
 	if err != nil {
 		return nil, err
 	}
 
-	io.Copy(part, file)
+	io.Copy(part, reader)
 	writer.Close()
 
 	var response *Response
-	req, err := http.NewRequest("POST", check.getUrl(), body)
+	req, err := http.NewRequest("POST", client.getUrl(), body)
 	if err == nil {
-		query := check.newQuery(req)
+		query := client.newQuery(req)
 
 		req.URL.RawQuery = query.Encode()
 		req.Header.Add("Content-Type", writer.FormDataContentType())
 
-		response, err = check.request(req)
+		response, err = client.request(req)
 	}
 
 	return response, err
 }
 
-func (check *Check) request(req *http.Request) (*Response, error) {
+func (client *Client) request(req *http.Request) (*Response, error) {
 	var response Response
 	var resp *http.Response
-	resp, err := check.http.Do(req)
+	resp, err := client.http.Do(req)
 
 	if err == nil {
 		if resp.StatusCode == http.StatusOK {
@@ -94,14 +101,14 @@ func (check *Check) request(req *http.Request) (*Response, error) {
 	return &response, err
 }
 
-func (check *Check) newQuery(req *http.Request) url.Values {
+func (client *Client) newQuery(req *http.Request) url.Values {
 	query := req.URL.Query()
-	query.Add("api_user", check.apiUser)
-	query.Add("api_secret", check.apiSecret)
-	query.Add("models", check.models)
+	query.Add("api_user", client.apiUser)
+	query.Add("api_secret", client.apiSecret)
+	query.Add("models", client.models)
 	return query
 }
 
-func (check *Check) getUrl() string {
-	return check.endpoint + check.url
+func (client *Client) getUrl() string {
+	return client.endpoint + client.url
 }
